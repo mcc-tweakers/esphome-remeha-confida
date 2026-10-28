@@ -1,0 +1,691 @@
+# =====================================================================
+#  Remeha Confida 40  ->  Home Assistant via ESPHome (onboard Bluetooth)
+#  Geen GTW-08 nodig. Flash deze YAML op een ESP32 via ESPHome.
+#
+#  Vul in secrets.yaml van je ESPHome in:
+#     wifi_ssid / wifi_password
+#     remeha_bt_key   : het 6-cijferige nummer van de BLE-sticker op je Confida
+#
+#  MAC invullen hoeft NIET: standaard zoekt de ESP zelf naar een toestel met een
+#  naam die begint met "EHC-" en verbindt met de eerste. Heb je meerdere
+#  toestellen, kijk dan in de ESPHome-log: elk gezien BLE-apparaat wordt daar met
+#  naam + MAC gelogd ("BLE gezien: ..."). Zet de juiste MAC dan hieronder onder
+#  'substitutions' bij ble_mac, zodat de ESP altijd met dat ene toestel verbindt.
+#
+#  Gebruik op eigen risico. Slechts een BLE-
+#  verbinding tegelijk: terwijl de ESP leest, kan een telefoon niet verbinden
+#  (gebruik daarvoor de schakelaar "Remeha uitlezing").
+# =====================================================================
+
+substitutions:
+  device_name: remeha-confida
+  friendly_name: "Remeha Confida"
+  # Laat dit op 00:00:00:00:00:00 staan om automatisch op naam ("EHC-...") te
+  # zoeken. Vul het MAC van JOUW Confida in als je meerdere toestellen hebt
+  # (MAC vind je met nRF Connect of in de ESPHome-log, regel "BLE gezien: ...").
+  ble_mac: "00:00:00:00:00:00"
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32dev          # pas aan als je een ander ESP32-board hebt
+  framework:
+    type: esp-idf          # esp_ble_passkey_reply / set_encryption vereisen IDF
+
+logger:
+  level: DEBUG              # zet op DEBUG om al het BLE-verkeer mee te lezen
+  logs:
+    remeha_confida: DEBUG
+    esp32_ble_tracker: DEBUG
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+api:
+ota:
+  - platform: esphome
+web_server:
+  version: 3
+  port: 80
+
+# De component (de C++/Python-driver) wordt bij het compileren uit de publieke
+# repo gehaald. Geen token nodig.
+external_components:
+  # Ontwikkel-/testopstelling: de component staat in de map 'components' naast
+  # deze YAML. Zet die map in je ESPHome-config naast remeha-confida.yaml.
+  - source:
+      type: local
+      path: components
+    components: [remeha_confida]
+  # Voor de publieke release wordt dit de GitHub-bron (publiek, geen token):
+  #   - source: github://mcc-tweakers/esphome-remeha-confida@main
+  #     components: [remeha_confida]
+
+# Handmatige herstartknop (verschijnt in HA en de webinterface).
+button:
+  - platform: restart
+    name: "Remeha ESP herstart"
+    icon: mdi:restart
+
+# Schakelaar om de uitlezing aan/uit te zetten. UIT = de ESP laat de BLE-verbinding
+# los en stopt met herverbinden, zodat een telefoon of een installateur kan
+# verbinden. AAN = weer uitlezen. Na een herstart standaard AAN.
+switch:
+  - platform: template
+    name: "Remeha uitlezing"
+    icon: mdi:bluetooth
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    turn_on_action:
+      - lambda: 'id(confida).set_active(true);'
+    turn_off_action:
+      - lambda: 'id(confida).set_active(false);'
+
+esp32_ble:
+  io_capability: keyboard_only   # wij leveren de passkey (het stickernummer)
+
+esp32_ble_tracker:
+
+ble_client:
+  - mac_address: ${ble_mac}
+    id: confida_client
+
+remeha_confida:
+  id: confida
+  ble_client_id: confida_client
+  update_interval: 30s
+  # Vaste GATT-UUIDs van de Confida BLE-module (gelijk voor alle Confida's. Als het goed is.....).
+  service_uuid: "f8fc98e4-5919-4a5c-852e-dfe04ad383c0"
+  write_uuid:   "496b1b03-cebc-4d59-9c32-14ea88c266f9"
+  notify_uuid:  "ab9af948-fb86-492d-820d-bdea2dcb7ecf"
+  passkey: !secret remeha_bt_key      # 6-cijferig stickernummer
+  # Naam-prefix voor automatisch zoeken (alleen gebruikt als ble_mac 0 is):
+  device_name_prefix: "EHC-"
+  # Diagnose-entiteiten in HA: schrijfresultaat, laatste herverbind-reden, teller.
+  write_result:
+    name: "Remeha laatste schrijfresultaat"
+  reconnect_reason:
+    name: "Remeha laatste herverbind-reden"
+  reconnect_count:
+    name: "Remeha herverbindingen"
+
+# --- Uitgelezen waarden (EHC-16)  (selectie van de meest nuttige objecten). ---
+# value_type: i16/u16/u8/u32/enum (of modbus-stijl u_word/s_word/u_dword/...).
+# enum-sensoren publiceren de ruwe numerieke code; de ruwe code vertaal je zelf (zie de parametertabel in de repo).
+# Zone-objecten (CM-codes) staan op subindex 1 = actieve zone (CIRCA).
+
+sensor:
+  - platform: remeha_confida
+    name: "Aanvoertemperatuur van warmtepomp (HM001)"
+    index: 0x4301
+    value_type: i16
+    gain: 0.01
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: mdi:thermometer
+  - platform: remeha_confida
+    name: "Retourtemperatuur van warmtepomp (HM002)"
+    index: 0x4302
+    value_type: i16
+    gain: 0.01
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: mdi:thermometer
+  - platform: remeha_confida
+    name: "Setpunt aanvoertemp. van warmtepomp (HM003)"
+    index: 0x4303
+    value_type: i16
+    gain: 0.01
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    entity_category: diagnostic
+    icon: mdi:thermometer-auto
+  - platform: remeha_confida
+    name: "Gemiddelde aanvoertemp. warmtepomp (HM020)"
+    index: 0x4314
+    value_type: i16
+    gain: 0.01
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: mdi:thermometer
+  - platform: remeha_confida
+    name: "Aanvoertemperatuur van buitenunit (HM185)"
+    index: 0x435B
+    value_type: i16
+    gain: 0.01
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: mdi:thermometer
+  - platform: remeha_confida
+    name: "Retourtemperatuur van buitenunit (HM186)"
+    index: 0x435C
+    value_type: i16
+    gain: 0.01
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: mdi:thermometer
+  - platform: remeha_confida
+    name: "Luchttemperatuur buitenunit (HM098)"
+    index: 0x4377
+    value_type: i16
+    gain: 0.01
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: mdi:thermometer
+  - platform: remeha_confida
+    name: "Aanvoertemperatuur van het toestel (AM016)"
+    index: 0x5013
+    value_type: i16
+    gain: 0.01
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: mdi:thermometer
+  - platform: remeha_confida
+    name: "Buitentemp voeler (AM027)"
+    index: 0x501E
+    value_type: i16
+    gain: 0.01
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: mdi:thermometer
+  - platform: remeha_confida
+    name: "Bedrade buitentemperatuur"
+    index: 0x5058
+    value_type: i16
+    gain: 0.01
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: mdi:thermometer
+  - platform: remeha_confida
+    name: "Intern aanvoertemperatuur setpunt (AM101)"
+    index: 0x50A9
+    value_type: u16
+    gain: 0.01
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    entity_category: diagnostic
+    icon: mdi:thermometer-auto
+  - platform: remeha_confida
+    name: "Ruimtetemperatuur van de groep (CM030)"
+    index: 0x5404
+    subindex: 1
+    value_type: i16
+    gain: 0.1
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: mdi:home-thermometer
+  # Hoge-resolutie ruimtemeting van de zonemodule (0,01 i.p.v. 0,1 graad bij CM030).
+  # Zit niet in de standaard bulk GetList-set, dus read: single. Niet elk toestel vult 'm:
+  # kijk in de log of hij een echte waarde geeft (niet 0 / niet -327,68); zo niet, weghalen.
+  - platform: remeha_confida
+    name: "Ruimtetemperatuur hoge resolutie (CM260)"
+    index: 0x5434
+    subindex: 1
+    value_type: i16
+    gain: 0.01
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 2
+    icon: mdi:home-thermometer
+    read: single
+  - platform: remeha_confida
+    name: "Gewenste ruimtetemperatuur van de groep (CM190)"
+    index: 0x5419
+    subindex: 1
+    value_type: i16
+    gain: 0.1
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    entity_category: diagnostic
+    icon: mdi:home-thermometer
+  - platform: remeha_confida
+    name: "Berekende gewenste ruimtetemperatuur (CM280)"
+    index: 0x5436
+    subindex: 1
+    value_type: i16
+    gain: 0.01
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    entity_category: diagnostic
+    icon: mdi:thermometer-auto
+  - platform: remeha_confida
+    name: "Huidig thermisch vermogen van warmtepomp (HM160)"
+    id: wp_thermisch_vermogen
+    index: 0x43B4
+    value_type: u16
+    gain: 0.1
+    unit_of_measurement: "kW"
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 2
+    icon: mdi:heat-pump
+  - platform: remeha_confida
+    name: "Huidig stroomverbruik van warmtepomp (HM161)"
+    index: 0x43B5
+    value_type: u16
+    gain: 0.1
+    unit_of_measurement: "kW"
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 2
+    icon: mdi:flash
+  - platform: remeha_confida
+    name: "Stroom van de compressor (HM062)"
+    index: 0x4340
+    value_type: u16
+    gain: 0.1
+    unit_of_measurement: "A"
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 1
+    entity_category: diagnostic
+    icon: mdi:current-ac
+  - platform: remeha_confida
+    name: "Totaal energieverbruik"
+    index: 0x5044
+    value_type: u32
+    unit_of_measurement: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    accuracy_decimals: 0
+    icon: mdi:counter
+  - platform: remeha_confida
+    name: "Waterdruk van het primaire circuit (AM019)"
+    index: 0x5016
+    value_type: u8
+    gain: 0.1
+    unit_of_measurement: "bar"
+    device_class: pressure
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: mdi:gauge
+  - platform: remeha_confida
+    name: "Actueel pomptoerental (AM010)"
+    index: 0x500C
+    value_type: u16
+    gain: 0.1
+    unit_of_measurement: "%"
+    state_class: measurement
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:pump
+  - platform: remeha_confida
+    name: "Modulatieniveau BU waterpomp (HM123)"
+    index: 0x439B
+    value_type: u16
+    gain: 0.1
+    unit_of_measurement: "%"
+    state_class: measurement
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:pump
+  - platform: remeha_confida
+    name: "Warmtepomp buitenunit modulatieniveau"
+    index: 0x434B
+    value_type: u8
+    unit_of_measurement: "%"
+    state_class: measurement
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:gauge
+  - platform: remeha_confida
+    name: "Waterdebiet in het systeem (AM056)"
+    index: 0x5083
+    value_type: u16
+    gain: 0.01
+    unit_of_measurement: "L/min"
+    state_class: measurement
+    accuracy_decimals: 2
+    icon: mdi:water
+  - platform: remeha_confida
+    name: "Waterdebiet BU (HM110)"
+    index: 0x4385
+    value_type: u16
+    gain: 0.01
+    unit_of_measurement: "L/min"
+    state_class: measurement
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    icon: mdi:water
+  - platform: remeha_confida
+    name: "Ventilatortoerental van warmtepomp BU"
+    index: 0x4354
+    value_type: u16
+    unit_of_measurement: "rpm"
+    state_class: measurement
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:fan
+  - platform: remeha_confida
+    name: "Compressorfrequentie warmtepomp"
+    index: 0x4353
+    value_type: u8
+    unit_of_measurement: "Hz"
+    device_class: frequency
+    state_class: measurement
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:sine-wave
+  - platform: remeha_confida
+    name: "Berekende onmiddellijke COP (HM031)"
+    index: 0x431F
+    value_type: u16
+    gain: 0.001
+    # Zonder warmteproductie (compressor uit) is de COP betekenisloos: dan "onbekend".
+    # HM160 staat eerder in de lijst en is in dezelfde poll dus al bijgewerkt.
+    filters:
+      - lambda: |-
+          if (isnan(id(wp_thermisch_vermogen).state) || id(wp_thermisch_vermogen).state <= 0.0f) return NAN;
+          return x;
+    state_class: measurement
+    accuracy_decimals: 2
+    icon: mdi:gauge
+  - platform: remeha_confida
+    name: "Warmtepomp in storing (HM007)"
+    index: 0x4307
+    value_type: enum
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:alert
+  - platform: remeha_confida
+    name: "Verzoek om compressor te starten (HM030)"
+    index: 0x431E
+    value_type: enum
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:engine
+  - platform: remeha_confida
+    name: "Vorstbeveiliging is actief"
+    index: 0x502E
+    subindex: 1
+    value_type: bool       # vlag: 0 = nee, 0xFF = ja -> 0/1
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:snowflake
+  - platform: remeha_confida
+    name: "Warmteproductie voor CV is ingeschakeld"
+    index: 0x502E
+    subindex: 7
+    value_type: bool       # vlag: 0 = nee, 0xFF = ja (gaf eerder 255) -> 0/1
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:radiator
+  - platform: remeha_confida
+    name: "Draait de pomp? (AM015)"
+    index: 0x5012
+    value_type: enum
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:pump
+  - platform: remeha_confida
+    name: "Warmtepomp compressor aan-uit (HM008)"
+    index: 0x4308
+    value_type: enum
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:engine
+  - platform: remeha_confida
+    name: "BU ontdooimodus in werking (HM009)"
+    index: 0x4309
+    value_type: enum
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:snowflake-melt
+  # Let op: 0x512F/0x5133 ("totaal") worden door het toestel NIET via BLE gevuld (het
+  # totaal wordt elders uit de deeltellers opgeteld). Daarom lezen we hier de WEL gevulde CV-deeltellers
+  # (op deze CV-only WP == het totaal). Alle PPI-tellers zijn arrays: waarde op subindex 1.
+  - platform: remeha_confida
+    name: "Energieverbruik CV (AC088)"
+    index: 0x512C
+    subindex: 1
+    value_type: u32
+    gain: 0.1
+    unit_of_measurement: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    accuracy_decimals: 1
+    icon: mdi:counter
+  - platform: remeha_confida
+    name: "Thermische energielevering CV (AC098)"
+    index: 0x5130
+    subindex: 1
+    value_type: u32
+    gain: 0.1
+    unit_of_measurement: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    accuracy_decimals: 1
+    icon: mdi:radiator
+  - platform: remeha_confida
+    name: "Seizoensrendement (AC083)"
+    index: 0x5147
+    subindex: 1
+    value_type: u16
+    gain: 0.01
+    state_class: measurement
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    icon: mdi:gauge
+  - platform: remeha_confida
+    name: "Aantal productie-uren in verwarming (PC000)"
+    index: 0x5300
+    value_type: u32
+    unit_of_measurement: "h"
+    state_class: total_increasing
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:timer-outline
+  - platform: remeha_confida
+    name: "Totaal aantal branderstarts (PC002)"
+    index: 0x530B
+    value_type: u32
+    state_class: total_increasing
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:counter
+  - platform: remeha_confida
+    name: "Totaal aantal branduren (PC003)"
+    index: 0x530C
+    value_type: u32
+    unit_of_measurement: "h"
+    state_class: total_increasing
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:timer-outline
+  - platform: remeha_confida
+    name: "Buitenunit ontdooien duur (HC010)"
+    index: 0x43C1
+    value_type: u32
+    unit_of_measurement: "min"
+    state_class: total_increasing
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:snowflake-melt
+  - platform: remeha_confida
+    name: "Buitenunit aantal ontdooicycli (HC011)"
+    index: 0x43C2
+    value_type: u32
+    state_class: total_increasing
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    icon: mdi:snowflake-melt
+  # --- Tellers: totalen. De ECHTE waarde staat op subindex 1 (niet 0, daar staat de sentinel). ---
+  - platform: remeha_confida
+    name: "Totaal energieverbruik (AC065)"
+    index: 0x512F
+    subindex: 1
+    value_type: u32
+    gain: 0.1
+    unit_of_measurement: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    accuracy_decimals: 1
+    icon: mdi:lightning-bolt
+  - platform: remeha_confida
+    name: "Totale thermische energielevering (AC103)"
+    index: 0x5133
+    subindex: 1
+    value_type: u32
+    gain: 0.1
+    unit_of_measurement: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    accuracy_decimals: 1
+    icon: mdi:radiator
+
+# AP058 - instelbare parameter (waarschuwingsdrempel lage waterdruk, U8, 0.1 bar).
+# Wordt elke poll gelezen zodat de getoonde waarde met het toestel blijft kloppen; schrijft
+# alleen bij een wijziging (operation 0x04), de volgende read bevestigt/corrigeert die waarde.
+# read: single -> deze scalar zit NIET in de bulk-GetList, dus los opvragen (operation 0x00).
+# min/max hieronder zijn redelijke UI-grenzen (de echte toestelgrens is niet publiek bekend).
+number:
+  - platform: remeha_confida
+    name: "Waarschuwing dat druk laag is (AP058)"
+    index: 0x302B
+    value_type: u8
+    gain: 0.1
+    unit_of_measurement: "bar"
+    device_class: pressure
+    read: single
+    min_value: 0.3
+    max_value: 3.0
+    step: 0.1
+    mode: box
+    entity_category: config
+    icon: mdi:gauge-low
+
+  # --- Zone-/stooklijnparameters (instelbaar). Deze staan WEL in de bulk-GetList, dus read: bulk
+  # (standaard) volstaat; de 0x34xx-zoneobjecten zitten op subindex 1 = de actieve zone (CIRCA),
+  # PP018 is een scalar op subindex 0. min/max zijn UI-grenzen (de range zit niet in de OBD;
+  # alleen de technische U8/U16-range is bekend). LET OP: dit zijn echte stooklijninstellingen -
+  # wijzigen beinvloedt je verwarming. Wil je er een alleen-lezen van maken, zet 'm dan als sensor.
+  - platform: remeha_confida
+    name: "Hellingshoek stooklijn van deze groep (CP230)"
+    index: 0x3416
+    subindex: 1
+    value_type: u8
+    gain: 0.1
+    min_value: 0.0
+    max_value: 4.0
+    step: 0.1
+    mode: box
+    entity_category: config
+    icon: mdi:chart-line-variant
+  - platform: remeha_confida
+    name: "Minimum toerental CV-pomp (PP018)"
+    index: 0x3212
+    subindex: 0
+    value_type: u8
+    gain: 1
+    unit_of_measurement: "%"
+    min_value: 0
+    max_value: 100
+    step: 1
+    mode: box
+    entity_category: config
+    icon: mdi:pump
+  - platform: remeha_confida
+    name: "Maximale aanvoertemperatuur van deze groep (CP000)"
+    index: 0x3401
+    subindex: 1
+    value_type: u16
+    gain: 0.01
+    unit_of_measurement: "°C"
+    device_class: temperature
+    min_value: 20
+    max_value: 90
+    step: 0.5
+    mode: box
+    entity_category: config
+    icon: mdi:thermometer-high
+  - platform: remeha_confida
+    name: "Setpunt aanvoertemperatuur deze groep (CP010)"
+    index: 0x3402
+    subindex: 1
+    value_type: u16
+    gain: 0.01
+    unit_of_measurement: "°C"
+    device_class: temperature
+    min_value: 7
+    max_value: 90
+    step: 0.5
+    mode: box
+    entity_category: config
+    icon: mdi:thermometer
+  - platform: remeha_confida
+    name: "Voetpunt van de stooklijn van deze groep (CP210)"
+    index: 0x3414
+    subindex: 1
+    value_type: u16
+    gain: 0.1
+    unit_of_measurement: "°C"
+    device_class: temperature
+    min_value: 10
+    max_value: 90
+    step: 0.5
+    mode: box
+    entity_category: config
+    icon: mdi:thermometer-low
+  - platform: remeha_confida
+    name: "Nachtvoetpunt stooklijn van deze groep (CP220)"
+    index: 0x3415
+    subindex: 1
+    value_type: u16
+    gain: 0.1
+    unit_of_measurement: "°C"
+    device_class: temperature
+    min_value: 10
+    max_value: 90
+    step: 0.5
+    mode: box
+    entity_category: config
+    icon: mdi:weather-night
+  - platform: remeha_confida
+    name: "Ruimte-invloed op stooklijn van deze groep (CP240)"
+    index: 0x3417
+    subindex: 1
+    value_type: u8
+    gain: 1
+    min_value: 0
+    max_value: 10
+    step: 1
+    mode: box
+    entity_category: config
+    icon: mdi:home-thermometer
+
+text_sensor:
+  - platform: remeha_confida
+    name: "Toestelnaam"
+    index: 0x300F          # -> "EHC-16"
