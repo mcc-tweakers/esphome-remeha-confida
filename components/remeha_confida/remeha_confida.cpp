@@ -190,15 +190,20 @@ void RemehaConfida::setup() {
   gate_20_ = espbt::ESPBTUUID::from_raw(GATE_20);
   gate_22_ = espbt::ESPBTUUID::from_raw(GATE_22);
   canip_extra_ = espbt::ESPBTUUID::from_raw(CANIP_EXTRA);
-  esp_ble_auth_req_t auth = ESP_LE_AUTH_REQ_SC_MITM_BOND;
-  esp_ble_io_cap_t iocap = ESP_IO_CAP_IN;
-  uint8_t ks = 16, ik = 0x0F, rk = 0x0F;
-  esp_ble_gap_set_security_param(ESP_BLE_SM_AUTHEN_REQ_MODE, &auth, sizeof(auth));
-  esp_ble_gap_set_security_param(ESP_BLE_SM_IOCAP_MODE, &iocap, sizeof(iocap));
-  esp_ble_gap_set_security_param(ESP_BLE_SM_MAX_KEY_SIZE, &ks, sizeof(ks));
-  esp_ble_gap_set_security_param(ESP_BLE_SM_SET_INIT_KEY, &ik, sizeof(ik));
-  esp_ble_gap_set_security_param(ESP_BLE_SM_SET_RSP_KEY, &rk, sizeof(rk));
-  if (has_passkey_) { uint32_t pk = passkey_; esp_ble_gap_set_security_param(ESP_BLE_SM_SET_STATIC_PASSKEY, &pk, sizeof(pk)); }
+  // BLE security params only matter when we pair (Confida/GTW-22). The GTW-IoT
+  // hub accepts a plain, unencrypted connection, so we configure no passkey/bond
+  // and never request encryption (see ESP_GATTC_OPEN_EVT).
+  if (requires_pairing_) {
+    esp_ble_auth_req_t auth = ESP_LE_AUTH_REQ_SC_MITM_BOND;
+    esp_ble_io_cap_t iocap = ESP_IO_CAP_IN;
+    uint8_t ks = 16, ik = 0x0F, rk = 0x0F;
+    esp_ble_gap_set_security_param(ESP_BLE_SM_AUTHEN_REQ_MODE, &auth, sizeof(auth));
+    esp_ble_gap_set_security_param(ESP_BLE_SM_IOCAP_MODE, &iocap, sizeof(iocap));
+    esp_ble_gap_set_security_param(ESP_BLE_SM_MAX_KEY_SIZE, &ks, sizeof(ks));
+    esp_ble_gap_set_security_param(ESP_BLE_SM_SET_INIT_KEY, &ik, sizeof(ik));
+    esp_ble_gap_set_security_param(ESP_BLE_SM_SET_RSP_KEY, &rk, sizeof(rk));
+    if (has_passkey_) { uint32_t pk = passkey_; esp_ble_gap_set_security_param(ESP_BLE_SM_SET_STATIC_PASSKEY, &pk, sizeof(pk)); }
+  }
 
   // Auto-connect mode: if the ble_client MAC is left at 00:00:00:00:00:00, we
   // discover the appliance by advertised-name prefix. Register as a scan
@@ -210,8 +215,9 @@ void RemehaConfida::setup() {
   // The scan-listener is registered at build time (see __init__.py), so
   // parse_device() receives advertisements. Logged at INFO (not CONFIG) so it is
   // always captured in the live log.
-  ESP_LOGI(TAG, "init: geconfigureerd MAC=0x%012llX  scan_mode=%d  prefix='%s'",
-           (unsigned long long) cfg_addr, (int) scan_mode_, name_prefix_.c_str());
+  ESP_LOGI(TAG, "init: geconfigureerd MAC=0x%012llX  scan_mode=%d  prefix='%s'  pairing=%s",
+           (unsigned long long) cfg_addr, (int) scan_mode_, name_prefix_.c_str(),
+           requires_pairing_ ? "ja (passkey/encryptie)" : "NEE (GTW-IoT, plain connect)");
   ESP_LOGCONFIG(TAG, "Remeha Confida set up (%d items)", (int) items_.size());
 }
 
@@ -243,7 +249,9 @@ void RemehaConfida::dump_config() {
   ESP_LOGCONFIG(TAG, "Remeha Confida: items=%d", (int) items_.size());
   // Show only the last two digits: enough to spot a wrong/mangled secret
   // (e.g. a leading zero read as octal) without putting the PIN in the log.
-  if (has_passkey_)
+  if (!requires_pairing_)
+    ESP_LOGCONFIG(TAG, "  pairing: UIT (GTW-IoT, plain connect zonder passkey)");
+  else if (has_passkey_)
     ESP_LOGCONFIG(TAG, "  passkey: ****%02u (laatste 2 cijfers, controleer tegen de sticker)",
                   (unsigned) (passkey_ % 100));
   else
@@ -298,9 +306,12 @@ void RemehaConfida::pairing_failed_(const uint8_t *bda, uint8_t reason) {
 }
 
 void RemehaConfida::write_raw_(uint16_t handle, const uint8_t *d, size_t n) {
+  // On a plain (GTW-IoT) link, requesting MITM auth would make the stack try to
+  // elevate security (pairing) before the write; use AUTH_REQ_NONE there.
+  esp_gatt_auth_req_t auth = requires_pairing_ ? ESP_GATT_AUTH_REQ_MITM : ESP_GATT_AUTH_REQ_NONE;
   esp_err_t e = esp_ble_gattc_write_char(this->parent()->get_gattc_if(), this->parent()->get_conn_id(),
                                          handle, n, const_cast<uint8_t *>(d),
-                                         ESP_GATT_WRITE_TYPE_RSP, ESP_GATT_AUTH_REQ_MITM);
+                                         ESP_GATT_WRITE_TYPE_RSP, auth);
   if (e != ESP_OK)
     ESP_LOGW(TAG, "write_char(0x%04X, %d bytes) returned %s", handle, (int) n, esp_err_to_name(e));
 }
@@ -435,8 +446,9 @@ void RemehaConfida::gate_trigger_() {
   // (value==nullptr && len==0) and emits the same ATT Write Request (0x12) to
   // the handle - on air this is "12 1b 00".
   ESP_LOGI(TAG, ">> gate: trigger (0-byte write to 0x%04X)", h_1b_);
+  esp_gatt_auth_req_t auth = requires_pairing_ ? ESP_GATT_AUTH_REQ_MITM : ESP_GATT_AUTH_REQ_NONE;
   esp_err_t e = esp_ble_gattc_write_char_descr(this->parent()->get_gattc_if(), this->parent()->get_conn_id(),
-                                               h_1b_, 0, nullptr, ESP_GATT_WRITE_TYPE_RSP, ESP_GATT_AUTH_REQ_MITM);
+                                               h_1b_, 0, nullptr, ESP_GATT_WRITE_TYPE_RSP, auth);
   if (e != ESP_OK) ESP_LOGW(TAG, "gate write_char_descr returned %s", esp_err_to_name(e));
 }
 
@@ -492,9 +504,19 @@ void RemehaConfida::gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
       if (param->open.status != ESP_GATT_OK) break;
       auth_handled_ = false;
       gate_pending_ = false;
-      pairing_ = true;
-      pair_start_ = millis();
-      esp_ble_set_encryption(param->open.remote_bda, ESP_BLE_SEC_ENCRYPT_MITM);
+      if (requires_pairing_) {
+        // Confida/GTW-22: request an encrypted (bonded) link; the gate handshake
+        // starts from AUTH_CMPL (the gate only answers on an encrypted link).
+        pairing_ = true;
+        pair_start_ = millis();
+        ESP_LOGI(TAG, "verbonden - encryptie aanvragen (pairing)");
+        esp_ble_set_encryption(param->open.remote_bda, ESP_BLE_SEC_ENCRYPT_MITM);
+      } else {
+        // GTW-IoT: no pairing. Leave pairing_ false so the gate handshake fires
+        // straight after the notifications are enabled (see WRITE_DESCR_EVT).
+        pairing_ = false;
+        ESP_LOGI(TAG, "verbonden - GEEN pairing (GTW-IoT): direct door naar service discovery");
+      }
       break;
     case ESP_GATTC_SEARCH_CMPL_EVT:
       ESP_LOGI(TAG, "SEARCH_CMPL received - resolving handles");

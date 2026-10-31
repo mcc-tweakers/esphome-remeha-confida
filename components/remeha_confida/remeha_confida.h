@@ -64,6 +64,10 @@ class RemehaConfida : public PollingComponent,
   void set_write_uuid(const std::string &u)   { write_uuid_   = espbt::ESPBTUUID::from_raw(u); }
   void set_notify_uuid(const std::string &u)  { notify_uuid_  = espbt::ESPBTUUID::from_raw(u); }
   void set_passkey(uint32_t pk) { passkey_ = pk; has_passkey_ = true; }
+  // Whether the BLE link must be paired/encrypted (LESC passkey). true for the
+  // Confida/GTW-22 onboard module; false for the GTW-IoT hub, which accepts a
+  // plain connection and runs the gate handshake without any pairing.
+  void set_requires_pairing(bool v) { requires_pairing_ = v; }
   // Auto-connect by name: if the ble_client MAC is left as 00:00:00:00:00:00,
   // the hub scans and connects to the first device whose advertised name starts
   // with this prefix (default "EHC-"). With a real MAC filled in, scanning is
@@ -103,6 +107,7 @@ class RemehaConfida : public PollingComponent,
 
   uint32_t passkey_{0};
   bool has_passkey_{false};
+  bool requires_pairing_{true};  // false = GTW-IoT hub (no pairing/encryption)
 
   // resolved value handles
   uint16_t h_canip_w_{0}, h_canip_n_{0};
