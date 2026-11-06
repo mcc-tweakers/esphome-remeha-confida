@@ -1,15 +1,16 @@
 # =====================================================================
-#  EXPERIMENTEEL - Remeha via de GTW-IoT home-hub  ->  Home Assistant (ESPHome)
+#  Remeha via de GTW-IoT home-hub  ->  Home Assistant (ESPHome)
 # ---------------------------------------------------------------------
-#  Voor toestellen ZONDER onboard-Bluetooth (bv. Confida 10), die hun BLE via
-#  de GTW-IoT home-hub aanbieden. De hub adverteert als "GTW-IOT_<serienr>" en
-#  accepteert een PLAIN verbinding: GEEN pairing, GEEN passkey, GEEN sticker.
-#  De gate-handshake (TEA) en het CANIP-protocol zijn verder identiek aan de
-#  Confida/GTW-22, dus dezelfde component werkt - met requires_pairing: false.
+#  Voor toestellen ZONDER ingebouwde Bluetooth-module (bv. Confida 10), die hun
+#  BLE via de GTW-IoT home-hub aanbieden. De hub adverteert als
+#  "GTW-IOT_<serienr>" en accepteert een gewone verbinding: GEEN pairing,
+#  GEEN passkey, GEEN sticker. De gate-handshake (TEA) en het CANIP-protocol zijn
+#  verder identiek aan de GTW-22, dus dezelfde component werkt - met
+#  requires_pairing: false.
 #
-#  STATUS: eerste testversie, nog niet op hardware bevestigd. Ruime logging staat
-#  aan zodat we aan de hand van de ESPHome-log kunnen itereren. Stuur de volledige
-#  log van opstart t/m de eerste pollronde.
+#  STATUS: bevestigd werkend op een Confida 10 met GTW-IoT. De sensorenlijst is
+#  afgestemd op de Confida 40; op een Confida 10 kunnen enkele sensoren leeg
+#  blijven.
 #
 #  Vul in secrets.yaml van je ESPHome in:  wifi_ssid / wifi_password
 #  (GEEN remeha_bt_key nodig - de GTW-IoT koppelt zonder passkey.)
@@ -38,12 +39,10 @@ esp32:
     type: esp-idf          # esp_ble_passkey_reply / set_encryption vereisen IDF
 
 logger:
-  level: DEBUG              # ruime logging voor deze experimentele variant
+  level: DEBUG              # zet op DEBUG om al het BLE-verkeer mee te lezen
   logs:
     remeha_confida: DEBUG
     esp32_ble_tracker: DEBUG
-    esp32_ble_client: DEBUG   # verbindingsopbouw (open/close/discovery)
-    esp32_ble: DEBUG          # GAP-events (security-verzoeken e.d.)
 
 wifi:
   ssid: !secret wifi_ssid
