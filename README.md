@@ -1,13 +1,40 @@
 # Remeha Confida uitlezen met een ESP32 (ESPHome)
 
-Lees een Remeha Confida (EHC-regelaar) live uit in **Home Assistant** via de
-**onboard Bluetooth** van het toestel — **geen GTW-08-gateway nodig**, geen cloud. 
-Een ESP32 met ESPHome praat de
-onboard BLE-taal van het toestel: het koppelt via Bluetooth, en zet temperaturen, druk, debiet, COP,
-vermogens, tellers en storingen door naar Home Assistant. Een aantal parameters
-(stooklijn, drukwaarschuwing) is ook in te stellen.
+Lees een Remeha Confida (EHC-regelaar) live uit in **Home Assistant** via
+**Bluetooth** — **geen GTW-08-gateway nodig**, geen cloud. Een ESP32 met ESPHome
+praat de BLE-taal van het toestel: het koppelt via Bluetooth, en zet temperaturen,
+druk, debiet, COP, vermogens, tellers en storingen door naar Home Assistant. Een
+aantal parameters (stooklijn, drukwaarschuwing) is ook in te stellen.
+
+Werkt met beide Bluetooth-routes van Remeha: de **ingebouwde GTW-22-module**
+(bv. Confida 40) én de **GTW-IoT home-hub** (bv. Confida 10).
 
 Gebruik op eigen risico.
+
+## Welk toestel, welke YAML?
+
+Remeha biedt Bluetooth op twee manieren aan. Beide gebruiken dezelfde component
+(`components/`); alleen de YAML verschilt.
+
+| | Confida 40 (e/h) | Confida 10 |
+|---|---|---|
+| Bluetooth via | ingebouwde **GTW-22**-module (op X8) | de **GTW-IoT** home-hub |
+| Adverteert als | `EHC-…` | `GTW-IOT_<serienummer>` |
+| Koppelen | 6-cijferige **passkey van de sticker** | **geen** passkey of sticker; kort op de knop van de hub drukken |
+| YAML | `remeha-confida.yaml` | `remeha-confida-gtwiot.yaml` |
+
+Twijfel je welke route jouw toestel gebruikt? Doe een
+[nRF Connect](https://play.google.com/store/apps/details?id=no.nordicsemi.android.mcp)-scan
+naast het toestel: zie je `EHC-…`, neem dan `remeha-confida.yaml`; zie je
+`GTW-IOT_…`, neem dan `remeha-confida-gtwiot.yaml`.
+
+Het verschil zit in één optie van de component: `requires_pairing` (standaard
+`true`). Op `false` maakt de ESP een gewone verbinding zonder pairing en start hij
+direct de gate-handshake. De rest van het protocol is identiek.
+
+> De GTW-IoT-route is bevestigd werkend op een Confida 10. Met dank aan de
+> Tweakers-gebruiker die uitzocht dat de hub zonder pairing werkt en hetzelfde
+> protocol spreekt, en de eerste versie testte.
 
 ## In de huidige ESPHome-Yaml
 
@@ -113,27 +140,36 @@ waarden (NL)" of in het tabblad **"Enums"** van het codeboek.
 - Een **ESP32** (standaard `esp32dev`; pas het board aan in de YAML als je iets
   anders hebt). BLE moet aanstaan, dus geen ESP8266.
 - **ESPHome** (los, of via de Home Assistant-add-on).
-- Het **6-cijferige nummer van de BLE-sticker** op je Confida (de pairing-passkey).
+- **GTW-22-route:** het **6-cijferige nummer van de BLE-sticker** op je Confida
+  (de pairing-passkey). **GTW-IoT-route:** niets extra's.
 
 ## Installatie
 
-1. Zet `remeha-confida.yaml` en de map `components/` samen in je ESPHome-config.
-2. Maak een `secrets.yaml` aan (zie `secrets.yaml.example`) met je wifi-gegevens en
-   `remeha_bt_key` — het stickernummer. **Zet het tussen aanhalingstekens** als het
-   met een nul begint, anders leest YAML het als octaal:
+1. Zet de juiste YAML (zie de tabel hierboven) en de map `components/` samen in je
+   ESPHome-config.
+2. Maak een `secrets.yaml` aan (zie `secrets.yaml.example`) met je wifi-gegevens.
+   Gebruik je de **GTW-22-route**, zet er dan ook `remeha_bt_key` in — het
+   stickernummer. **Zet het tussen aanhalingstekens** als het met een nul begint,
+   anders leest YAML het als octaal:
    ```yaml
    remeha_bt_key: "012345"
    ```
 3. Compileer en flash. Standaard hoef je **geen MAC in te vullen** — zie hieronder.
 4. Koppelen: zorg dat er op dat moment **geen** andere BLE-verbinding met het toestel
-   actief is (bv. een telefoon-app — zie "Eén verbinding tegelijk"). Bij de eerste keer koppelen voert de ESP de passkey
-   zelf aan; je hoeft niets in te typen.
+   actief is (bv. een telefoon-app — zie "De schakelaar 'Remeha uitlezing'").
+   - **GTW-22:** bij de eerste keer koppelen voert de ESP de passkey zelf in; je
+     hoeft niets te typen.
+   - **GTW-IoT:** druk kort op de knop van de hub zodat die verbindbaar wordt. De
+     ESP verbindt daarna vanzelf; het lampje van de hub blijft blauw zolang de
+     verbinding staat.
 
 ## Automatisch verbinden (of een vast MAC)
 
 Laat `ble_mac` onder `substitutions` op `00:00:00:00:00:00` staan: de ESP zoekt dan
-zelf naar een toestel waarvan de naam begint met `EHC-` en verbindt met het eerste
-dat hij vindt. Elk gezien BLE-apparaat verschijnt éénmalig in de ESPHome-log:
+zelf naar een toestel waarvan de naam begint met de ingestelde prefix (`EHC-` in
+`remeha-confida.yaml`, `GTW-IOT` in `remeha-confida-gtwiot.yaml`) en verbindt met
+het eerste dat hij vindt. Elk gezien BLE-apparaat verschijnt éénmalig in de
+ESPHome-log:
 
 ```
 [remeha_confida] BLE gezien: 00:80:E1:AA:BB:CC  naam='EHC-16'  rssi=-62
@@ -164,17 +200,25 @@ de waarde terug, zodat de entiteit de werkelijke toestelwaarde toont.
 
 ## Problemen oplossen
 
-- **Komt niet voorbij het koppelen / "auth fail":** bijna altijd een verkeerde
-  passkey. Controleer `remeha_bt_key` (het stickernummer) en de aanhalingstekens.
-  In de opstartlog zie je `passkey: ****xx` — de laatste twee cijfers ter controle.
+- **Komt niet voorbij het koppelen / "auth fail" (GTW-22):** bijna altijd een
+  verkeerde passkey. Controleer `remeha_bt_key` (het stickernummer) en de
+  aanhalingstekens. In de opstartlog zie je `passkey: ****xx` — de laatste twee
+  cijfers ter controle.
+- **GTW-IoT wordt niet gevonden of verbindt niet:** druk kort op de knop van de
+  hub om hem verbindbaar te maken, en controleer dat de Remeha-app niet tegelijk
+  verbonden is. In de opstartlog moet `pairing=NEE (GTW-IoT, plain connect)` staan;
+  staat daar `ja`, dan gebruik je de verkeerde YAML.
 - **"Repeated Attempts" / blijft falen:** na een verkeerde pincode is de gateway
   **60 s niet beschikbaar**. De component wacht daarom oplopend (90 s → 3 → 5 → 10 min)
   voor een nieuwe poging; even geduld, niet handmatig blijven herstarten.
 - **Een telefoon kan niet verbinden:** de ESP is verbonden. Zet "Remeha uitlezing" uit.
 - **Een sensor blijft leeg terwijl de index klopt:** veel objecten zijn arrays — de
   waarde staat dan op `subindex: 1` (of 2), niet op 0.
-- **Maximaal 3 gekoppelde apparaten:** koppel je een 4e, dan vergeet de gateway het
-  oudste. Koppel de ESP dus bij voorkeur als laatste.
+- **Maximaal 3 gekoppelde apparaten (GTW-22):** koppel je een 4e, dan vergeet de
+  gateway het oudste. Koppel de ESP dus bij voorkeur als laatste.
+- **Sensoren blijven leeg op een Confida 10:** de sensorenlijst is afgestemd op de
+  Confida 40; niet elk object bestaat op elk toestel. Lege sensoren kun je uit de
+  YAML weghalen.
 
 ## Hoe het werkt
 
@@ -186,8 +230,9 @@ binnen te begrijpen.
 ## Mapindeling
 
 ```
-remeha-confida.yaml        de ESPHome-config: sensoren, parameters, schakelaar
-components/remeha_confida/  de external component (C++/Python-driver)
+remeha-confida.yaml         ESPHome-config voor de GTW-22-route (met passkey)
+remeha-confida-gtwiot.yaml  ESPHome-config voor de GTW-IoT-route (zonder passkey)
+components/remeha_confida/  de external component (C++/Python-driver), voor beide
 docs/readme.md              technische protocolreferentie
 data/                       codeboek om objecten op te zoeken
 secrets.yaml.example        voorbeeld voor je eigen secrets.yaml
