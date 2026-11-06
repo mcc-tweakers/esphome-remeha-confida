@@ -6,7 +6,7 @@ praat de BLE-taal van het toestel: het koppelt via Bluetooth, en zet temperature
 druk, debiet, COP, vermogens, tellers en storingen door naar Home Assistant. Een
 aantal parameters (stooklijn, drukwaarschuwing) is ook in te stellen.
 
-Werkt met beide Bluetooth-routes van Remeha: de **ingebouwde GTW-22-module**
+Werkt met verschillende Bluetooth-routes van Remeha: de **ingebouwde GTW-22-module**
 (bv. Confida 40) én de **GTW-IoT home-hub** (bv. Confida 10).
 
 Gebruik op eigen risico.
@@ -28,22 +28,14 @@ Twijfel je welke route jouw toestel gebruikt? Doe een
 naast het toestel: zie je `EHC-…`, neem dan `remeha-confida.yaml`; zie je
 `GTW-IOT_…`, neem dan `remeha-confida-gtwiot.yaml`.
 
-Het verschil zit in één optie van de component: `requires_pairing` (standaard
-`true`). Op `false` maakt de ESP een gewone verbinding zonder pairing en start hij
-direct de gate-handshake. De rest van het protocol is identiek.
-
-> De GTW-IoT-route is bevestigd werkend op een Confida 10. Met dank aan de
-> Tweakers-gebruiker die uitzocht dat de hub zonder pairing werkt en hetzelfde
-> protocol spreekt, en de eerste versie testte.
-
 ## In de huidige ESPHome-Yaml
 
-- **~45 sensoren** — aanvoer/retour, buitentemperatuur, waterdruk, debiet, COP,
+- **sensoren** — zoals aanvoer/retour, buitentemperatuur, waterdruk, debiet, COP,
   elektrisch en thermisch vermogen, compressor- en ventilatortoerental, modulatie,
   pompstanden en de status van de buitenunit.
 - **Tellers** (`total_increasing`) — energieverbruik en -levering, productie-uren,
   starts en ontdooicycli.
-- **8 instelbare parameters** (`number`) — o.a. stooklijn (voetpunt, helling,
+- **instelbare parameters** (`number`) — o.a. stooklijn (voetpunt, helling,
   max. aanvoer, ruimte-invloed) en de lagedrukwaarschuwing.
 - **Storingsstatus** — of de warmtepomp in storing staat (HM007). De volledige
   fouthistorie (`H{categorie}.{nummer}`) zit wél in het protocol (zie
