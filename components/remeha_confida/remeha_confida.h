@@ -44,6 +44,9 @@ struct RemehaItem {
   sensor::Sensor *sensor{nullptr};        // numeric read-only value
   text_sensor::TextSensor *text_sensor{nullptr};  // string value (e.g. device name)
   number::Number *number{nullptr};   // writable param: read-back is published here too
+  binary_sensor::BinarySensor *binary_sensor{nullptr}; // boolean read-only value
+  bool truthy_check;                // perform a truthy check on values (for binary sensor)
+  uint8_t true_value;                // value to consider as "true" (for binary sensor)
   bool single{false};                // true = read via individual request (op 0x00), not bulk GetList
 };
 

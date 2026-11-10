@@ -869,7 +869,7 @@ void RemehaConfida::decode_and_publish_(RemehaItem &it, uint8_t flag, const uint
     it.text_sensor->publish_state(s);
     return;
   }
-  if (it.sensor == nullptr && it.number == nullptr) return;
+  if (it.sensor == nullptr && it.number == nullptr && it.binary_sensor == nullptr) return;
   int64_t raw = 0; bool ok = true;
   bool is_signed = (it.type == VT_I8 || it.type == VT_I16 || it.type == VT_I32);
   if (flag == 0x02) {
@@ -896,7 +896,9 @@ void RemehaConfida::decode_and_publish_(RemehaItem &it, uint8_t flag, const uint
   if (!ok || na) return;
   // Boolean status flags (e.g. 0x502E:x) use 0 = no and 0xFF = yes (shown as
   // "Ja"). Map any non-zero value to 1.
-  if (it.type == VT_BOOL) raw = raw != 0 ? 1 : 0;
+  if (it.type == VT_BOOL && it.binary_sensor == nullptr) { // values for binary sensor will be checked below
+    raw = raw != 0 ? 1 : 0;
+  }
   float val = (float) raw * it.gain;
   ESP_LOGD(TAG, "0x%04X:%u = %.3f", it.index, it.sub, val);
   if (it.sensor != nullptr) it.sensor->publish_state(val);
@@ -904,6 +906,13 @@ void RemehaConfida::decode_and_publish_(RemehaItem &it, uint8_t flag, const uint
     ESP_LOGI(TAG, "read-back 0x%04X:%u = %.3f (number '%s')", it.index, it.sub, val,
              it.number->get_name().c_str());
     it.number->publish_state(val);  // actual current value
+  }
+  if (it.type == VT_BOOL && it.binary_sensor != nullptr) {
+    if (it.truthy_check) {
+      it.binary_sensor->publish_state(!!raw);
+    } else {
+      it.binary_sensor->publish_state(raw == it.true_value);
+    }
   }
 }
 

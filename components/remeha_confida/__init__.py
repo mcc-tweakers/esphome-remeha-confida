@@ -82,6 +82,10 @@ CONF_RECONNECT_COUNT = "reconnect_count"
 # Optional: text_sensor with the result of the last parameter write
 # ("OK: 0x3212:0 node 1" or "geweigerd 0x3212:0: waarde te laag (0x06090032)").
 CONF_WRITE_RESULT = "write_result"
+# Optional: true value for binary/boolean sensors, or perform a truthy
+# check (everything not 0 is true)
+CONF_TRUTHY_CHECK = 'truthy_check'
+CONF_TRUE_VALUE = 'true_value'
 
 
 def _passkey(value):
