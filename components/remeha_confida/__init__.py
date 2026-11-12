@@ -9,7 +9,7 @@
 # ============================================================================
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import ble_client, esp32_ble, esp32_ble_tracker, number
+from esphome.components import ble_client, esp32_ble, esp32_ble_tracker, number, switch
 # Import the core sensor/text_sensor modules under aliases: this component has its
 # own sensor.py/text_sensor.py submodules, and those shadow the bare names once
 # ESPHome imports them, which would break new_sensor()/new_text_sensor() below.
@@ -26,6 +26,7 @@ RemehaConfida = remeha_ns.class_(
     "RemehaConfida", cg.PollingComponent, ble_client.BLEClientNode
 )
 RemehaNumber = remeha_ns.class_("RemehaNumber", number.Number, cg.Component)
+RemehaSwitch = remeha_ns.class_("RemehaSwitch", switch.Switch, cg.Component)
 
 # Shared value-type map (used by sensor + number platforms). Both the native
 # tokens (u16/i16/...) and Modbus-style aliases (U_WORD/S_WORD/...) are accepted.

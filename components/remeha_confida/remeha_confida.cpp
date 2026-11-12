@@ -869,7 +869,7 @@ void RemehaConfida::decode_and_publish_(RemehaItem &it, uint8_t flag, const uint
     it.text_sensor->publish_state(s);
     return;
   }
-  if (it.sensor == nullptr && it.number == nullptr && it.binary_sensor == nullptr) return;
+  if (it.sensor == nullptr && it.number == nullptr && it.binary_sensor == nullptr && it.switch_ == nullptr) return;
   int64_t raw = 0; bool ok = true;
   bool is_signed = (it.type == VT_I8 || it.type == VT_I16 || it.type == VT_I32);
   if (flag == 0x02) {
@@ -896,7 +896,7 @@ void RemehaConfida::decode_and_publish_(RemehaItem &it, uint8_t flag, const uint
   if (!ok || na) return;
   // Boolean status flags (e.g. 0x502E:x) use 0 = no and 0xFF = yes (shown as
   // "Ja"). Map any non-zero value to 1.
-  if (it.type == VT_BOOL && it.binary_sensor == nullptr) { // values for binary sensor will be checked below
+  if (it.type == VT_BOOL && it.binary_sensor == nullptr && it.switch_ == nullptr) { // values for binary sensor and switch will be checked below
     raw = raw != 0 ? 1 : 0;
   }
   float val = (float) raw * it.gain;
@@ -907,11 +907,12 @@ void RemehaConfida::decode_and_publish_(RemehaItem &it, uint8_t flag, const uint
              it.number->get_name().c_str());
     it.number->publish_state(val);  // actual current value
   }
-  if (it.type == VT_BOOL && it.binary_sensor != nullptr) {
-    if (it.truthy_check) {
-      it.binary_sensor->publish_state(!!raw);
-    } else {
-      it.binary_sensor->publish_state(raw == it.true_value);
+  if (it.type == VT_BOOL && (it.binary_sensor != nullptr || it.switch_ != nullptr)) {
+    bool new_value = it.truthy_check ? !!raw : (raw == it.true_value);
+    if (it.binary_sensor) {
+      it.binary_sensor->publish_state(new_value);
+    } else if (it.switch_) {
+      it.switch_->publish_state(new_value);
     }
   }
 }
@@ -1026,6 +1027,18 @@ void RemehaNumber::control(float value) {
       break;
   }
   ESP_LOGI(TAG, "number set %.3f -> raw %ld -> write 0x%04X:%u", value, raw, index_, sub_);
+  parent_->enqueue_write(node_, index_, sub_, data);
+  this->publish_state(value);  // optimistic; the next poll confirms the read-back
+}
+
+void RemehaSwitch::write_state(bool value) {
+  if (parent_ == nullptr) {
+    ESP_LOGW(TAG, "switch has no parent hub");
+    return;
+  }
+  std::vector<uint8_t> data;
+  data.push_back((uint8_t)(value & 0xFF));
+  ESP_LOGI(TAG, "switch set %u -> write 0x%04X:%u", value, index_, sub_);
   parent_->enqueue_write(node_, index_, sub_, data);
   this->publish_state(value);  // optimistic; the next poll confirms the read-back
 }
