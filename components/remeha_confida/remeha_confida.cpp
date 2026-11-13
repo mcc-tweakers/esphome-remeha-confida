@@ -225,13 +225,16 @@ bool RemehaConfida::parse_device(const esp32_ble_tracker::ESPBTDevice &device) {
   uint64_t addr = device.address_uint64();
   const std::string &name = device.get_name();
 
+  char device_address[esp32_ble_tracker::ESPBTDevice::MAC_ADDRESS_PRETTY_BUFFER_SIZE];
+  device.address_str_to(device_address);
+
   // Log every distinct BLE device once (diagnostics + so a user with multiple
   // appliances can read off which MAC to put in the YAML). Always, so that the
   // log confirms the scan listener is actually receiving advertisements.
   if (seen_.find(addr) == seen_.end()) {
     seen_.insert(addr);
     ESP_LOGI(TAG, "BLE gezien: %s  naam='%s'  rssi=%d",
-             device.address_str().c_str(), name.c_str(), device.get_rssi());
+             device_address, name.c_str(), device.get_rssi());
   }
 
   // Only in scan-mode: first device whose name starts with the prefix -> pin its
@@ -240,7 +243,7 @@ bool RemehaConfida::parse_device(const esp32_ble_tracker::ESPBTDevice &device) {
     addr_resolved_ = true;
     this->parent()->set_address(addr);
     ESP_LOGI(TAG, "Confida gevonden: %s (%s) - verbinden",
-             name.c_str(), device.address_str().c_str());
+             name.c_str(), device_address);
   }
   return false;  // never claim the advertisement; ble_client drives the connection
 }
