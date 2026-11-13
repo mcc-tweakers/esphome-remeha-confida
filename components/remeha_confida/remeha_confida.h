@@ -41,9 +41,13 @@ struct RemehaItem {
   uint8_t sub;                       // subindex: 0 for scalars, >=1 for array objects (see .cpp)
   ValueType type;                    // how to decode the raw bytes
   float gain;                        // scale factor applied to the raw integer
-  sensor::Sensor *sensor{nullptr};        // numeric read-only value
+  sensor::Sensor *sensor{nullptr};   // numeric read-only value
   text_sensor::TextSensor *text_sensor{nullptr};  // string value (e.g. device name)
   number::Number *number{nullptr};   // writable param: read-back is published here too
+  binary_sensor::BinarySensor *binary_sensor{nullptr}; // boolean read-only value
+  switch_::Switch *switch_{nullptr}; // boolean read-write value
+  bool truthy_check;                 // perform a truthy check on values (for binary sensor)
+  uint8_t true_value;                // value to consider as "true" (for binary sensor)
   bool single{false};                // true = read via individual request (op 0x00), not bulk GetList
 };
 
@@ -194,6 +198,25 @@ class RemehaNumber : public number::Number, public Component {
   ValueType type_{VT_U16};
   float gain_{1.0f};
 };
+
+// Writable parameter exposed as a Home Assistant switch. On change it builds a
+// write frame (operation 0x04) and hands it to the hub's write queue.
+class RemehaSwitch : public switch_::Switch, public Component {
+ public:
+  void set_parent(RemehaConfida *p) { parent_ = p; }
+  void set_node(uint8_t v) { node_ = v; }
+  void set_index(uint16_t v) { index_ = v; }
+  void set_sub(uint8_t v) { sub_ = v; }
+
+ protected:
+  void write_state(bool value) override;
+  RemehaConfida *parent_{nullptr};
+  uint8_t node_{1};
+  uint16_t index_{0};
+  uint8_t sub_{0};
+  ValueType type_{VT_BOOL};
+};
+
 
 }  // namespace remeha_confida
 }  // namespace esphome

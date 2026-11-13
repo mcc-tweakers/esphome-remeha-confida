@@ -33,6 +33,8 @@ naast het toestel: zie je `EHC-…`, neem dan `remeha-confida.yaml`; zie je
 - **sensoren** — zoals aanvoer/retour, buitentemperatuur, waterdruk, debiet, COP,
   elektrisch en thermisch vermogen, compressor- en ventilatortoerental, modulatie,
   pompstanden en de status van de buitenunit.
+- **binaire (boolean) sensoren** — b.v. of de pomp draait, de warmteproductie is
+  ingeschakeld, de vorstbeveiliging actief is.
 - **Tellers** (`total_increasing`) — energieverbruik en -levering, productie-uren,
   starts en ontdooicycli.
 - **instelbare parameters** (`number`) — o.a. stooklijn (voetpunt, helling,
@@ -77,8 +79,13 @@ daarmee of het onder `sensor:` of `number:` hoort:
 - **`Counter`** — een oplopende teller (energie, uren, starts). `sensor:` met
   `state_class: total_increasing`.
 
-**Stap 2 — zet het blok in de YAML**, onder `sensor:` (alleen lezen) of `number:`
-(instelbaar).
+Objecten van datatype `Enum` en enum-waarden `YesNo` of `OffOn` kunnen als
+`sensor` of als `binary_sensor` worden toegevoegd. Als sensor worden ze binnen
+Home Assistant getoond als een numeriek veld met de waarde voor yes/on (`1`) of
+no/off (`0`); als binary sensor worden ze als aan/uit-sensor getoond.
+
+**Stap 2 — zet het blok in de YAML**, onder `sensor:` of `binary_sensor`
+(alleen lezen) of `number:` (instelbaar).
 
 Sensor toevoegen (onder `sensor:`):
 
@@ -126,6 +133,33 @@ waarden (NL)" of in het tabblad **"Enums"** van het codeboek.
 
 > Een `number` wijzigt een **echte toestelinstelling**. Twijfel je, maak er dan een
 > alleen-lezen `sensor` van (zelfde velden, onder `sensor:`).
+
+Binary sensor toevoegen (onder `binary_sensor:`):
+
+```yaml
+  - platform: remeha_confida
+    name: "Vorstbeveiliging is actief"
+    index: 0x502E
+    subindex: 1
+    entity_category: diagnostic
+    icon: mdi:snowflake
+```
+
+Standaard worden alle uitgelezen waarden die niet `0` zijn gezien als on/yes/true,
+dus de waarden `1`, `123` en `255` worden allemaal gezien als waar.
+
+Mocht je een specifieke waarde willen gebruiken als waar, kan dat door deze
+expliciet te configuren met `true_value`:
+
+```yaml
+  - platform: remeha_confida
+    name: "Vorstbeveiliging is NIET actief"
+    index: 0x502E
+    subindex: 1
+    true_value: 0
+    entity_category: diagnostic
+    icon: mdi:snowflake
+```
 
 ## Benodigdheden
 

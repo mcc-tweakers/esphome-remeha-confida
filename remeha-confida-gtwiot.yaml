@@ -434,43 +434,6 @@ sensor:
     accuracy_decimals: 0
     entity_category: diagnostic
     icon: mdi:engine
-  - platform: remeha_confida
-    name: "Vorstbeveiliging is actief"
-    index: 0x502E
-    subindex: 1
-    value_type: bool       # vlag: 0 = nee, 0xFF = ja -> 0/1
-    accuracy_decimals: 0
-    entity_category: diagnostic
-    icon: mdi:snowflake
-  - platform: remeha_confida
-    name: "Warmteproductie voor CV is ingeschakeld"
-    index: 0x502E
-    subindex: 7
-    value_type: bool       # vlag: 0 = nee, 0xFF = ja (gaf eerder 255) -> 0/1
-    accuracy_decimals: 0
-    entity_category: diagnostic
-    icon: mdi:radiator
-  - platform: remeha_confida
-    name: "Draait de pomp? (AM015)"
-    index: 0x5012
-    value_type: enum
-    accuracy_decimals: 0
-    entity_category: diagnostic
-    icon: mdi:pump
-  - platform: remeha_confida
-    name: "Warmtepomp compressor aan-uit (HM008)"
-    index: 0x4308
-    value_type: enum
-    accuracy_decimals: 0
-    entity_category: diagnostic
-    icon: mdi:engine
-  - platform: remeha_confida
-    name: "BU ontdooimodus in werking (HM009)"
-    index: 0x4309
-    value_type: enum
-    accuracy_decimals: 0
-    entity_category: diagnostic
-    icon: mdi:snowflake-melt
   # Let op: 0x512F/0x5133 ("totaal") worden door het toestel NIET via BLE gevuld (het
   # totaal wordt elders uit de deeltellers opgeteld). Daarom lezen we hier de WEL gevulde CV-deeltellers
   # (op deze CV-only WP == het totaal). Alle PPI-tellers zijn arrays: waarde op subindex 1.
@@ -697,3 +660,32 @@ text_sensor:
   - platform: remeha_confida
     name: "Toestelnaam"
     index: 0x300F          # -> "EHC-16"
+
+binary_sensor:
+  - platform: remeha_confida
+    name: "Vorstbeveiliging is actief"
+    index: 0x502E
+    subindex: 1
+    entity_category: diagnostic
+    icon: mdi:snowflake
+  - platform: remeha_confida
+    name: "Warmteproductie voor CV is ingeschakeld"
+    index: 0x502E
+    subindex: 7
+    entity_category: diagnostic
+    icon: mdi:radiator
+  - platform: remeha_confida
+    name: "Draait de pomp? (AM015)"
+    index: 0x5012
+    entity_category: diagnostic
+    icon: mdi:pump
+  - platform: remeha_confida
+    name: "Warmtepomp compressor aan-uit (HM008)"
+    index: 0x4308
+    entity_category: diagnostic
+    icon: mdi:engine
+  - platform: remeha_confida
+    name: "BU ontdooimodus in werking (HM009)"
+    index: 0x4309
+    entity_category: diagnostic
+    icon: mdi:snowflake-melt

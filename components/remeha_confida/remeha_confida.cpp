@@ -225,13 +225,16 @@ bool RemehaConfida::parse_device(const esp32_ble_tracker::ESPBTDevice &device) {
   uint64_t addr = device.address_uint64();
   const std::string &name = device.get_name();
 
+  char device_address[esp32_ble_tracker::ESPBTDevice::MAC_ADDRESS_PRETTY_BUFFER_SIZE];
+  device.address_str_to(device_address);
+
   // Log every distinct BLE device once (diagnostics + so a user with multiple
   // appliances can read off which MAC to put in the YAML). Always, so that the
   // log confirms the scan listener is actually receiving advertisements.
   if (seen_.find(addr) == seen_.end()) {
     seen_.insert(addr);
     ESP_LOGI(TAG, "BLE gezien: %s  naam='%s'  rssi=%d",
-             device.address_str().c_str(), name.c_str(), device.get_rssi());
+             device_address, name.c_str(), device.get_rssi());
   }
 
   // Only in scan-mode: first device whose name starts with the prefix -> pin its
@@ -240,7 +243,7 @@ bool RemehaConfida::parse_device(const esp32_ble_tracker::ESPBTDevice &device) {
     addr_resolved_ = true;
     this->parent()->set_address(addr);
     ESP_LOGI(TAG, "Confida gevonden: %s (%s) - verbinden",
-             name.c_str(), device.address_str().c_str());
+             name.c_str(), device_address);
   }
   return false;  // never claim the advertisement; ble_client drives the connection
 }
@@ -869,7 +872,7 @@ void RemehaConfida::decode_and_publish_(RemehaItem &it, uint8_t flag, const uint
     it.text_sensor->publish_state(s);
     return;
   }
-  if (it.sensor == nullptr && it.number == nullptr) return;
+  if (it.sensor == nullptr && it.number == nullptr && it.binary_sensor == nullptr && it.switch_ == nullptr) return;
   int64_t raw = 0; bool ok = true;
   bool is_signed = (it.type == VT_I8 || it.type == VT_I16 || it.type == VT_I32);
   if (flag == 0x02) {
@@ -896,7 +899,9 @@ void RemehaConfida::decode_and_publish_(RemehaItem &it, uint8_t flag, const uint
   if (!ok || na) return;
   // Boolean status flags (e.g. 0x502E:x) use 0 = no and 0xFF = yes (shown as
   // "Ja"). Map any non-zero value to 1.
-  if (it.type == VT_BOOL) raw = raw != 0 ? 1 : 0;
+  if (it.type == VT_BOOL && it.binary_sensor == nullptr && it.switch_ == nullptr) { // values for binary sensor and switch will be checked below
+    raw = raw != 0 ? 1 : 0;
+  }
   float val = (float) raw * it.gain;
   ESP_LOGD(TAG, "0x%04X:%u = %.3f", it.index, it.sub, val);
   if (it.sensor != nullptr) it.sensor->publish_state(val);
@@ -904,6 +909,14 @@ void RemehaConfida::decode_and_publish_(RemehaItem &it, uint8_t flag, const uint
     ESP_LOGI(TAG, "read-back 0x%04X:%u = %.3f (number '%s')", it.index, it.sub, val,
              it.number->get_name().c_str());
     it.number->publish_state(val);  // actual current value
+  }
+  if (it.type == VT_BOOL && (it.binary_sensor != nullptr || it.switch_ != nullptr)) {
+    bool new_value = it.truthy_check ? !!raw : (raw == it.true_value);
+    if (it.binary_sensor) {
+      it.binary_sensor->publish_state(new_value);
+    } else if (it.switch_) {
+      it.switch_->publish_state(new_value);
+    }
   }
 }
 
@@ -1017,6 +1030,18 @@ void RemehaNumber::control(float value) {
       break;
   }
   ESP_LOGI(TAG, "number set %.3f -> raw %ld -> write 0x%04X:%u", value, raw, index_, sub_);
+  parent_->enqueue_write(node_, index_, sub_, data);
+  this->publish_state(value);  // optimistic; the next poll confirms the read-back
+}
+
+void RemehaSwitch::write_state(bool value) {
+  if (parent_ == nullptr) {
+    ESP_LOGW(TAG, "switch has no parent hub");
+    return;
+  }
+  std::vector<uint8_t> data;
+  data.push_back((uint8_t)(value & 0xFF));
+  ESP_LOGI(TAG, "switch set %u -> write 0x%04X:%u", value, index_, sub_);
   parent_->enqueue_write(node_, index_, sub_, data);
   this->publish_state(value);  // optimistic; the next poll confirms the read-back
 }
